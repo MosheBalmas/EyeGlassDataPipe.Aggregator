@@ -3,7 +3,8 @@ import traceback
 import logging
 
 import azure.servicebus
-from azure.servicebus import ServiceBusClient
+from azure.servicebus import ServiceBusClient, ServiceBusMessage
+from src.utils.L2_Utils import exec_single_matched_file
 
 # os.environ["HTTP_PROXY"] = "http://proxy-dmz.intel.com:912"
 # os.environ["HTTPS_PROXY"] = "http://proxy-dmz.intel.com:912"
@@ -34,6 +35,15 @@ class Pub_Sub_Handler:
 
     # -------------------------------------------
     @property
+    def sql_handler(self):
+        return self._sql_handler
+
+    @sql_handler.setter
+    def sql_handler(self, value):
+        self._sql_handler = value
+
+    # -------------------------------------------
+    @property
     def receiver(self):
         return self._receiver
 
@@ -42,27 +52,29 @@ class Pub_Sub_Handler:
         self._receiver = value
 
     @property
-    def publisher(self):
-        return self._publisher
+    def sender(self):
+        return self._sender
 
-    @publisher.setter
-    def publisher(self, value):
-        self._publisher = value
+    @sender.setter
+    def sender(self, value):
+        self._sender = value
 
     # ---------------------------------------------------------------------
-    def __init__(self, l2_utils):
+    def __init__(self, l2_utils, sql_handler):
         # Initialize values
         data_logger.info(f"Subscriber initiated")
 
         self.l2_utils = l2_utils
+        self.sql_handler = sql_handler
+        
         connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
         receiver_queue_name = l2_utils.get_kv_secret("EGProcessQueueName").value
-        publisher_queue_name = l2_utils.get_kv_secret("EGProcessResultsQueueName").value
+        sender_queue_name = l2_utils.get_kv_secret("EGProcessResultsQueueName").value
 
         self.init_servicebus(connection_string)
 
         self.init_receiver(connection_string, receiver_queue_name)
-        self.init_publisher(connection_string, publisher_queue_name)
+        self.init_sender(connection_string, sender_queue_name)
 
     def init_servicebus(self, connection_string):
 
@@ -77,10 +89,11 @@ class Pub_Sub_Handler:
 
         self.receiver = self.servicebus_client.get_queue_receiver(queue_name=queue_name)
 
-    def init_publisher(self, connection_string, queue_name):
+    def init_sender(self, connection_string, queue_name):
         self.servicebus_client: azure.servicebus.ServiceBusClient
 
-        self.publisher = self.servicebus_client.get(queue_name=queue_name)
+        self.sender = self.servicebus_client.get_queue_sender(queue_name=queue_name)
+
     def poll_messages(self):
         received_msgs = self.receiver.receive_messages(max_message_count=5, max_wait_time=5)
         data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
@@ -93,23 +106,26 @@ class Pub_Sub_Handler:
                 self.complete_message(msg)
             else:
                 pass
+
                 # todo: need to decide what to do with failed messages
                 # it means that a file could not be parsed for some reason
 
     def process_message(self, queue_msg):
         try:
             msg = json.loads(str(queue_msg))
-            query_results = self.l2_utils.exec_single_matched_file(msg["file_name"], msg["file_size"], msg["queries"],
+            print (f"pid = {msg['pid']}")
+            query_results = exec_single_matched_file(msg["file_name"], msg["file_size"], msg["queries"],
                                                      msg["axon_id"])
 
         except Exception as exc:
             data_logger.error(f"{msg['file_name']} generated an exception: {exc}")
             data_logger.error(f"Traceback: {traceback.format_exc()}")
-
+            self.sql_handler.WriteProcessStatusToDB(msg["pid"],"fail", traceback.format_exc())
         else:
             data_logger.info(f"{msg['file_name']} search completed successfully")
-            # todo: add writer to destination
-            # todo: add db status writer
+            self.send_a_message(query_results)
+
+            self.sql_handler.WriteProcessStatusToDB(msg["pid"], "pass", "")
             return 0
 
     def complete_message(self, msg):
@@ -120,3 +136,12 @@ class Pub_Sub_Handler:
         received_msgs = self.receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
         for msg in received_msgs:
             self.receiver.complete_message(msg)
+
+    def send_a_message(self, msg):
+
+        self.sender: azure.servicebus._servicebus_sender.ServiceBusSender
+        message = ServiceBusMessage(json.dumps(msg))
+        self.sender.send_messages(message)  # (message)
+
+
+

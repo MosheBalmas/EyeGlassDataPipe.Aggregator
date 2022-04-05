@@ -1,5 +1,7 @@
 from src.utils.L2Logger import L2Logger
-from src.utils.subscriber import Subscriber
+from src.utils.Pub_Sub_Handler import Pub_Sub_Handler
+from src.utils.L2_Utils import L2_Utils
+from src.utils.AzureSqlHandler import AzureSqlHandler
 import logging
 import sys
 import traceback
@@ -18,15 +20,12 @@ def filter_environment_credential_warning(record):
 def main():
     try:
         # Initialize logging
-        data_logger = L2Logger("ProcessEGFile", level="INFO").LOG
+        data_logger = L2Logger("ProcessEGFile", level="WARNING").LOG
 
-        handler = logging.StreamHandler(sys.stdout)
+        l2_utils = L2_Utils()
+        sql_handler = AzureSqlHandler(l2_utils)
+        sub = Pub_Sub_Handler(l2_utils, sql_handler)
 
-        handler.addFilter(filter_environment_credential_warning)
-
-        data_logger.addHandler(handler)
-
-        sub = Subscriber(data_logger)
         while True:
             sub.poll_messages()
 
@@ -34,11 +33,11 @@ def main():
 
         data_logger.error("Exception of type %s occurred. Error: %s" % (e.__class__, str(e)))
         data_logger.error("Traceback: {}".format(traceback.format_exc()))
+
     finally:
-
-        for h in data_logger.handlers:
-            data_logger.removeHandler(h)
-
+        del l2_utils
+        del data_logger
+        del sql_handler
         del sub
 
 if __name__ == '__main__':
