@@ -113,19 +113,19 @@ class Pub_Sub_Handler:
     def process_message(self, queue_msg):
         try:
             msg = json.loads(str(queue_msg))
-            print (f"pid = {msg['pid']}")
+            data_logger.error(f"{msg['pid']} is being processed")
             query_results = exec_single_matched_file(msg["file_name"], msg["file_size"], msg["queries"],
                                                      msg["axon_id"])
 
         except Exception as exc:
             data_logger.error(f"{msg['file_name']} generated an exception: {exc}")
             data_logger.error(f"Traceback: {traceback.format_exc()}")
-            self.sql_handler.WriteProcessStatusToDB(msg["pid"],"fail", traceback.format_exc())
+            self.sql_handler.WriteProcessStatusToDB(msg["pid"],"fail", traceback.format_exc(), None)
         else:
             data_logger.info(f"{msg['file_name']} search completed successfully")
             self.send_a_message(query_results)
 
-            self.sql_handler.WriteProcessStatusToDB(msg["pid"], "pass", "")
+            self.sql_handler.WriteProcessStatusToDB(msg["pid"], "pass", "", query_results)
             return 0
 
     def complete_message(self, msg):

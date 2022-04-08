@@ -1,6 +1,6 @@
 import logging
 import pyodbc
-
+import json
 class AzureSqlHandler:
 
     @property
@@ -75,11 +75,13 @@ class AzureSqlHandler:
         return self.connection_string
 
 
-    def WriteProcessStatusToDB(self, pid, status, msg):
+    def WriteProcessStatusToDB(self, pid, status, msg, proc_result):
         with pyodbc.connect(self.connection_string) as conn:
             cursor = conn.cursor()
             sql = """\
-            EXEC Data_Utils.UpdateProcessStatus @pid=?, @proc_status=?, @proc_msg=?
+            EXEC Data_Utils.UpdateProcessStatus @pid=?,@proc_status=?,@proc_msg=?,@proc_result=?
             """
-            params = (pid, status, msg)
+            # params = (pid,status,msg,','.join(json.dumps(res) for res in proc_result))
+            params = (pid, status, msg, str(proc_result))
             cursor.execute(sql, params)
+
