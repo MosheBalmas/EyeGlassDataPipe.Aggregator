@@ -1,11 +1,14 @@
 import json
 import traceback
 import logging
+from time import perf_counter
+import datetime
 
 import azure.servicebus
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
-from src.utils.L2_Utils import exec_single_matched_file
 
+from src.utils.AzureSqlHandler import AzureSqlHandler
+from src.utils.ADLSHandler import ADLSHandler
 # os.environ["HTTP_PROXY"] = "http://proxy-dmz.intel.com:912"
 # os.environ["HTTPS_PROXY"] = "http://proxy-dmz.intel.com:912"
 
@@ -51,14 +54,6 @@ class Pub_Sub_Handler:
     def receiver(self, value):
         self._receiver = value
 
-    @property
-    def sender(self):
-        return self._sender
-
-    @sender.setter
-    def sender(self, value):
-        self._sender = value
-
     # ---------------------------------------------------------------------
     def __init__(self, l2_utils, sql_handler):
         # Initialize values
@@ -68,13 +63,11 @@ class Pub_Sub_Handler:
         self.sql_handler = sql_handler
         
         connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
-        receiver_queue_name = l2_utils.get_kv_secret("EGProcessQueueName").value
-        sender_queue_name = l2_utils.get_kv_secret("EGProcessResultsQueueName").value
+        receiver_queue_name = l2_utils.get_kv_secret("EGAggregationQueueName").value
 
         self.init_servicebus(connection_string)
 
         self.init_receiver(connection_string, receiver_queue_name)
-        self.init_sender(connection_string, sender_queue_name)
 
     def init_servicebus(self, connection_string):
 
@@ -89,13 +82,8 @@ class Pub_Sub_Handler:
 
         self.receiver = self.servicebus_client.get_queue_receiver(queue_name=queue_name)
 
-    def init_sender(self, connection_string, queue_name):
-        self.servicebus_client: azure.servicebus.ServiceBusClient
-
-        self.sender = self.servicebus_client.get_queue_sender(queue_name=queue_name)
-
     def poll_messages(self):
-        received_msgs = self.receiver.receive_messages(max_message_count=5, max_wait_time=5)
+        received_msgs = self.receiver.receive_messages(max_message_count=1, max_wait_time=5)
         data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
         for msg in received_msgs:
             msg: azure.servicebus.ServiceBusMessage
@@ -112,21 +100,71 @@ class Pub_Sub_Handler:
 
     def process_message(self, queue_msg):
         try:
+            sql_handler = AzureSqlHandler(self.l2_utils)
+
             msg = json.loads(str(queue_msg))
             data_logger.error(f"{msg['pid']} is being processed")
-            query_results = exec_single_matched_file(msg["file_name"], msg["file_size"], msg["queries"],
-                                                     msg["axon_id"])
+
+            result_dict = msg["header"]
+            file_processes = msg["file_processes"]
+            axon_id = msg["axon_id"]
+            save_to_path = msg["save_to_path"]
+
+            eg_queries_results = sql_handler.poll_results(axon_id)
+
+            result_dict["eyeglass_queries"] = eg_queries_results
+
+            sql_handler.WriteDataPipeStatus(self.axon_id, "Eyeglass pipe completed",
+                                                       perf_counter() - self.perf_start)
+
+            data_logger.info(f"EyeGlass queries completed. elapsed : {str(perf_counter() - self.perf_start)}")
+            current_time = datetime.datetime.now()
+
+            result_json = json.dumps(self.result_dict, indent=4)
+
+            adls_props = {"end_point": "ADLSAccountEndPoint",
+                          "container": "ADLSAccountContainerTest",
+                          "test_container": "ADLSAccountContainerTest"}
+
+            adls_handler = ADLSHandler(self.l2_utils, adls_props)
+
+            data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - self.perf_start)}")
+            self.azure_sql_handler.WriteDataPipeStatus(self.axon_id, "ADLSHandler Initiated",
+                                                       perf_counter() - self.perf_start)
+            current_time = datetime.datetime.now()
+
+            adls_handler.create_directory(save_to_path)
+            data_logger.info(f"ADLS directory created: {save_to_path}. "
+                             f"elapsed : {str((datetime.datetime.now() - current_time))}")
+            data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - self.perf_start)}")
+
+            self.adls_handler.create_file("{}.json".format(self.axon_id), result_json)
+            data_logger.info(
+                f"ADLS file created: {self.axon_id}. elapsed: {str(perf_counter() - self.perf_start)}")
+            self.azure_sql_handler.WriteDataPipeStatus(
+                self.axon_id, "ADLS doc created",
+                perf_counter() - self.perf_start)
+            current_time = datetime.datetime.now()
+
+            self.azure_sql_handler.WriteDocToDB(self.axon_id, result_json)
+            data_logger.info(
+                f"DB file parsed: {self.axon_id}. elapsed: {str(perf_counter() - self.perf_start)}")
+            current_time = datetime.datetime.now()
+
+            self.azure_sql_handler.WriteDataPipeStatus(self.axon_id, "Process completed",
+                                                       perf_counter() - self.perf_start)
+            data_logger.info(
+                f"EyeGlass document saved to db. elapsed: {str(perf_counter() - self.perf_start)}")
+
 
         except Exception as exc:
             data_logger.error(f"{msg['file_name']} generated an exception: {exc}")
             data_logger.error(f"Traceback: {traceback.format_exc()}")
-            self.sql_handler.WriteProcessStatusToDB(msg["pid"],"fail", traceback.format_exc(), None)
+            self.sql_handler.WriteProcessStatusToDB(msg["pid"], "fail", traceback.format_exc(), None)
         else:
             data_logger.info(f"{msg['file_name']} search completed successfully")
-            self.send_a_message(query_results)
-
-            self.sql_handler.WriteProcessStatusToDB(msg["pid"], "pass", "", query_results)
             return 0
+
 
     def complete_message(self, msg):
         self.receiver.complete_message(msg)

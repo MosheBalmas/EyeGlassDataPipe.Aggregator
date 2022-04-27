@@ -1,6 +1,11 @@
 import logging
 import pyodbc
 import json
+import time
+from time import perf_counter
+
+data_logger = logging.getLogger(__name__)
+
 class AzureSqlHandler:
 
     @property
@@ -61,11 +66,11 @@ class AzureSqlHandler:
 
     def __init__(self, l2_utils):
         self.AzureSqlServer = l2_utils.get_kv_secret(
-            "AzureSqlServer").value  # 'aiacdataengsqldev.privatelink.AzureSqlServerDb.windows.net'
-        self.AzureSqlServerPort = l2_utils.get_kv_secret("AzureSqlServerPort").value  # '1433'
-        self.AzureSqlServerDb = l2_utils.get_kv_secret("AzureSqlServerDb").value  # 'repol2'
-        self.AzureSqlServerUser = l2_utils.get_kv_secret("AzureSqlServerUser").value  # 'laasdataengadmin'
-        self.AzureSqlServerPass = l2_utils.get_kv_secret("AzureSqlServerPass").value  # '1@AzureSqlServerPass123'
+            "AzureSqlServer").value
+        self.AzureSqlServerPort = l2_utils.get_kv_secret("AzureSqlServerPort").value
+        self.AzureSqlServerDb = l2_utils.get_kv_secret("AzureSqlServerDb").value
+        self.AzureSqlServerUser = l2_utils.get_kv_secret("AzureSqlServerUser").value
+        self.AzureSqlServerPass = l2_utils.get_kv_secret("AzureSqlServerPass").value
         self.AzureSqlServerDriver = l2_utils.get_kv_secret(
             "AzureSqlServerDriver").value  # '{ODBC AzureSqlServerDriver 17 for SQL AzureSqlServer}'
 
@@ -85,3 +90,23 @@ class AzureSqlHandler:
             params = (pid, status, msg, str(proc_result))
             cursor.execute(sql, params)
 
+    def poll_results(self, axon_id):
+
+        perf_start = perf_counter()
+        pending_results = self.azure_sql_handler.GetPendingResultsList(axon_id)
+        # total_processes = pending_results[0]
+        total_pending = pending_results[1]
+        # total_pass = pending_results[2]
+        # total_fail = pending_results[3]
+
+        while total_pending > 0:
+            time.sleep(5)
+            data_logger.info(f"Pending processes: {total_pending}")
+
+            pending_results = self.azure_sql_handler.GetPendingResultsList(axon_id)
+            total_pending = pending_results[1]
+
+        all_results = self.azure_sql_handler.GetResults(axon_id)
+
+        data_logger.info(f"EyeGlass results pulled from db. elapsed: {str(perf_counter() - perf_start)}")
+        return all_results

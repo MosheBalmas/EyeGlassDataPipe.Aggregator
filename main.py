@@ -20,7 +20,7 @@ def filter_environment_credential_warning(record):
 def main():
     try:
         # Initialize logging
-        data_logger = L2Logger("ProcessEGFile", level="WARNING").LOG
+        data_logger = L2Logger("EG.Aggregator", level="WARNING").LOG
 
         l2_utils = L2_Utils()
         sql_handler = AzureSqlHandler(l2_utils)
