@@ -1,9 +1,6 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-
 import time
 import logging
+import logging.config
 import sys
 
 
@@ -54,15 +51,40 @@ class L2Logger:
         self.write_mode = write_mode or "w"
         self.level = level = level or "INFO"
         self.init_logging()
-        print("Logger is %s" % (self.log_file_name))
+        self.LOG.info(f"Logger is {self.log_file_name}.log")
 
     def init_logging(self):
-        logging.basicConfig(level=self.level,
-                            format="%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
-                            datefmt='%d/%m/%Y %I:%M:%S %p',
-                            # filename="Logs/%s" % (self.log_file_name),
-                            # stream=sys.stdout,
-                            filemode=self.write_mode)
+        DEFAULT_LOGGING = {
+            "version": 1,
+            "formatters": {
+                "standard": {
+                    "format": "%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
+                    "datefmt": "%d/%m/%Y %I:%M:%S %p"},
+            },
+            "handlers": {
+                "console": {"class": "logging.StreamHandler",
+                            "formatter": "standard",
+                            "level": "DEBUG",
+                            "stream": sys.stdout},
+                "file": {"class": "logging.FileHandler",
+                         "formatter": "standard",
+                         "level": "DEBUG",
+                         "filename": f"Logs/{self.log_file_name}", "mode": self.write_mode}
+            },
+            "loggers": {
+                __name__: {"level": "INFO",
+                           "handlers": ["console"],
+                           "propagate": False},
+            }
+        }
+
+        logging.config.dictConfig(DEFAULT_LOGGING)
+
+        # logging.basicConfig(level=self.level,
+        #                     format="%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
+        #                     datefmt="%d/%m/%Y %I:%M:%S %p",
+        #                     filename=f"Logs/{self.log_file_name}.%s" ,
+        #                     filemode=self.write_mode)
 
         # global LOG
-        self.LOG = logging.getLogger()
+        self.LOG = logging.getLogger(__name__)

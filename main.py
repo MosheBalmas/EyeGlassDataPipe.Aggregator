@@ -1,5 +1,5 @@
 from src.utils.L2Logger import L2Logger
-from src.utils.Pub_Sub_Handler import Pub_Sub_Handler
+from src.utils.PubSubHandler import PubSubHandler
 from src.utils.L2_Utils import L2_Utils
 from src.utils.AzureSqlHandler import AzureSqlHandler
 import logging
@@ -20,11 +20,11 @@ def filter_environment_credential_warning(record):
 def main():
     try:
         # Initialize logging
-        data_logger = L2Logger("EG.Aggregator", level="WARNING").LOG
+        data_logger = L2Logger("EG.Aggregator", level="INFO").LOG
 
         l2_utils = L2_Utils()
         sql_handler = AzureSqlHandler(l2_utils)
-        sub = Pub_Sub_Handler(l2_utils, sql_handler)
+        sub = PubSubHandler(l2_utils, sql_handler)
 
         while True:
             sub.poll_messages()

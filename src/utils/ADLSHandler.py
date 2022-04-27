@@ -162,3 +162,16 @@ class ADLSHandler:
         except Exception as e:
             data_logger.error(
                 f"Create file: Exception of type %s occurred. Error: {str(e)}. Traceback:. {traceback.format_exc()}")
+
+    def delete_directory(self, axon_id):
+        try:
+
+            self.file_system_client.delete_directory(axon_id)
+
+        except Exception as e:
+            data_logger.error(
+                f"Delete directory {axon_id}: Exception of type %s occurred. Error: {str(e)}. Traceback:. {traceback.format_exc()}")
+            raise
+        else:
+            data_logger.info(
+                f"Delete directory {axon_id}: completed successfully")
