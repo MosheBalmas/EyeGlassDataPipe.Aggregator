@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="853c9820-2e37-4fa1-9e85-7230fc26d07f" name="Changes" comment="Added message processing">
+    <list default="true" id="853c9820-2e37-4fa1-9e85-7230fc26d07f" name="Changes" comment="fixed logging&#10;fixed ADLS handlers&#10;added result writer">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/ADLSHandler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/ADLSHandler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/AzureSqlHandler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/AzureSqlHandler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/L2Logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/L2Logger.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/Pub_Sub_Handler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/PubSubHandler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils/PubSubHandler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/PubSubHandler.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -80,7 +77,14 @@
       <option name="project" value="LOCAL" />
       <updated>1651058916283</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="fixed logging&#10;fixed ADLS handlers&#10;added result writer">
+      <created>1651078286213</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1651078286213</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -96,22 +100,43 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Added message processing" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added message processing" />
+    <MESSAGE value="fixed logging&#10;fixed ADLS handlers&#10;added result writer" />
+    <option name="LAST_COMMIT_MESSAGE" value="fixed logging&#10;fixed ADLS handlers&#10;added result writer" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/utils/PubSubHandler.py</url>
-          <line>88</line>
+          <line>89</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/src/utils/PubSubHandler.py</url>
-          <line>68</line>
+          <line>69</line>
           <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/utils/PubSubHandler.py</url>
+          <line>196</line>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/utils/PubSubHandler.py</url>
+          <line>118</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/utils/PubSubHandler.py</url>
+          <line>188</line>
+          <option name="timeStamp" value="6" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="exc" language="Python" />
+      </configuration>
+    </watches-manager>
   </component>
 </project>

@@ -1,4 +1,5 @@
 import json
+import time
 import traceback
 import logging
 from time import perf_counter
@@ -46,12 +47,12 @@ class PubSubHandler:
 
     # -------------------------------------------
     @property
-    def receiver(self):
-        return self._receiver
+    def aggregators_receiver(self):
+        return self._aggregators_receiver
 
-    @receiver.setter
-    def receiver(self, value):
-        self._receiver = value
+    @aggregators_receiver.setter
+    def aggregators_receiver(self, value):
+        self._aggregators_receiver = value
 
     # ---------------------------------------------------------------------
     def __init__(self, l2_utils, sql_handler, data_logger_p=logging.getLogger(__name__)):
@@ -70,7 +71,7 @@ class PubSubHandler:
 
         self.init_servicebus(connection_string)
 
-        self.init_receiver(receiver_queue_name)
+        self.init_aggregators_receiver(receiver_queue_name)
 
     def init_servicebus(self, connection_string):
 
@@ -81,12 +82,12 @@ class PubSubHandler:
         self.servicebus_client = ServiceBusClient.from_connection_string(conn_str=connection_string,
                                                                          logging_enable=True, http_proxy=HTTP_PROXY)
 
-    def init_receiver(self, queue_name):
+    def init_aggregators_receiver(self, queue_name):
 
-        self.receiver = self.servicebus_client.get_queue_receiver(queue_name=queue_name)
+        self.aggregators_receiver = self.servicebus_client.get_queue_receiver(queue_name=queue_name)
 
     def poll_messages(self):
-        received_msgs = self.receiver.receive_messages(max_message_count=1, max_wait_time=5)
+        received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
         data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
         for msg in received_msgs:
             msg: azure.servicebus.ServiceBusMessage
@@ -111,10 +112,13 @@ class PubSubHandler:
 
             result_dict = msg["header"]
             file_processes = msg["file_processes"]
+            result_queue_name = msg["result_queue_name"]
             axon_id = msg["axon_id"]
             save_to_path = msg["save_to_path"]
 
-            eg_queries_results = sql_handler.poll_results(axon_id)
+            eg_queries_results = self.poll_queue_results(axon_id=axon_id,
+                                                         file_processes=file_processes,
+                                                         result_queue_name=result_queue_name)
 
             result_dict["eyeglass_queries"] = eg_queries_results
 
@@ -166,16 +170,43 @@ class PubSubHandler:
             return 0
 
     def complete_message(self, msg):
-        self.receiver.complete_message(msg)
+        self.aggregators_receiver.complete_message(msg)
 
     def empty_queue(self):
 
-        received_msgs = self.receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
+        received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
         for msg in received_msgs:
-            self.receiver.complete_message(msg)
+            self.aggregators_receiver.complete_message(msg)
 
     def send_a_message(self, msg):
 
         self.sender: azure.servicebus._servicebus_sender.ServiceBusSender
         message = ServiceBusMessage(json.dumps(msg))
         self.sender.send_messages(message)  # (message)
+
+    def poll_queue_results(self, axon_id, file_processes, result_queue_name):
+
+        perf_start = perf_counter()
+        local_file_processes = file_processes
+        all_results = []
+        while len(local_file_processes) > 0:
+            time.sleep(1)
+            with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
+
+                received_results = results_receiver.receive_messages(max_message_count=5, max_wait_time=5)
+                data_logger.warning(f"Received {len(received_results)} messages from the queue")
+                for msg in received_results:
+                    msg: azure.servicebus.ServiceBusMessage
+                    data_logger.info(f"Message {msg.message_id} received")
+                    msg_content = json.loads(str(msg))
+
+                    file_name = msg_content["file_name"]
+                    all_results.extend(msg_content["query_results"])
+
+                    del local_file_processes[file_name]
+
+                    self.complete_message(msg)
+                    data_logger.info(f"Pending processes: {len(local_file_processes)}")
+
+        data_logger.info(f"EyeGlass results pulled from db. elapsed: {str(perf_counter() - perf_start)}")
+        return all_results

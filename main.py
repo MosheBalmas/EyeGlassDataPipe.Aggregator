@@ -24,7 +24,7 @@ def main():
 
         l2_utils = L2_Utils()
         sql_handler = AzureSqlHandler(l2_utils)
-        sub = PubSubHandler(l2_utils, sql_handler)
+        sub = PubSubHandler(l2_utils, sql_handler, data_logger_p=data_logger)
 
         while True:
             sub.poll_messages()
