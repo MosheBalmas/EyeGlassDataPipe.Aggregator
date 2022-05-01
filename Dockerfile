@@ -13,6 +13,7 @@ COPY ./requirements.txt ./
 RUN pip install -r requirements.txt
 COPY ./src ./src
 COPY ./main.py ./
+RUN mkdir ./Logs
 
 # This means our worker will be located at /usr/app/src/main.py
 CMD ["python3", "main.py"]

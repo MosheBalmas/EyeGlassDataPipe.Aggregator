@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="853c9820-2e37-4fa1-9e85-7230fc26d07f" name="Changes" comment="fixed logging&#10;fixed ADLS handlers&#10;added result writer">
+    <list default="true" id="853c9820-2e37-4fa1-9e85-7230fc26d07f" name="Changes" comment="added dynamic result queue reader">
+      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils/PubSubHandler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/PubSubHandler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -31,7 +31,12 @@
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/../EyeGlassDataPipe.FileProcessor" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\mbalmas\Syncplicity\IVE\Data infra\Dev\Github\EyeGlassDataPipe.Aggregator" />
+    </key>
   </component>
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -84,7 +89,14 @@
       <option name="project" value="LOCAL" />
       <updated>1651078286213</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="added dynamic result queue reader">
+      <created>1651145538721</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1651145538721</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -101,7 +113,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Added message processing" />
     <MESSAGE value="fixed logging&#10;fixed ADLS handlers&#10;added result writer" />
-    <option name="LAST_COMMIT_MESSAGE" value="fixed logging&#10;fixed ADLS handlers&#10;added result writer" />
+    <MESSAGE value="added dynamic result queue reader" />
+    <option name="LAST_COMMIT_MESSAGE" value="added dynamic result queue reader" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
