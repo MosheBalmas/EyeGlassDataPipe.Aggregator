@@ -6,7 +6,7 @@ from time import perf_counter
 import datetime
 
 import azure.servicebus
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
+from azure.servicebus import ServiceBusClient, ServiceBusMessage, AutoLockRenewer
 
 from src.utils.AzureSqlHandler import AzureSqlHandler
 from src.utils.ADLSHandler import ADLSHandler
@@ -54,6 +54,22 @@ class PubSubHandler:
     def aggregators_receiver(self, value):
         self._aggregators_receiver = value
 
+    @property
+    def connection_string(self):
+        return self._connection_string
+
+    @connection_string.setter
+    def connection_string(self, value):
+        self._connection_string = value
+
+    @property
+    def receiver_queue_name(self):
+        return self._receiver_queue_name
+
+    @receiver_queue_name.setter
+    def receiver_queue_name(self, value):
+        self._receiver_queue_name = value
+
     # ---------------------------------------------------------------------
     def __init__(self, l2_utils, sql_handler, data_logger_p=logging.getLogger(__name__)):
         # Initialize values
@@ -66,41 +82,59 @@ class PubSubHandler:
         self.l2_utils = l2_utils
         self.sql_handler = sql_handler
 
-        connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
-        receiver_queue_name = l2_utils.get_kv_secret("EGAggregationQueueName").value
+        self.connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
+        self.receiver_queue_name = l2_utils.get_kv_secret("EGAggregationQueueName").value
 
-        self.init_servicebus(connection_string)
+        # self.init_servicebus(connection_string)
 
-        self.init_aggregators_receiver(receiver_queue_name)
+        # self.init_aggregators_receiver(receiver_queue_name)
 
-    def init_servicebus(self, connection_string):
+    def init_servicebus(self):
 
         HTTP_PROXY = {
             'proxy_hostname': 'proxy-dmz.intel.com',  # proxy hostname.
             'proxy_port': 912  # proxy port.
         }
-        self.servicebus_client = ServiceBusClient.from_connection_string(conn_str=connection_string,
+        self.servicebus_client = ServiceBusClient.from_connection_string(conn_str=self.connection_string,
                                                                          logging_enable=True, http_proxy=HTTP_PROXY)
 
-    def init_aggregators_receiver(self, queue_name):
+    def init_aggregators_receiver(self):
 
-        self.aggregators_receiver = self.servicebus_client.get_queue_receiver(queue_name=queue_name)
+        self.aggregators_receiver = self.servicebus_client.get_queue_receiver(queue_name=self.receiver_queue_name)
 
     def poll_messages(self):
-        received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
-        data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
-        for msg in received_msgs:
-            msg: azure.servicebus.ServiceBusMessage
-            data_logger.info(f"Message {msg.message_id} received")
 
-            stat = self.process_message(msg)
-            if stat == 0:
-                self.complete_message(msg)
-            else:
-                pass
+        self.init_servicebus()
 
-                # todo: need to decide what to do with failed messages
-                # it means that a file could not be parsed for some reason
+        with self.servicebus_client:
+            self.init_aggregators_receiver()
+            with self.init_aggregators_receiver:
+
+                received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
+
+                renewer = AutoLockRenewer()
+
+                for msg in received_msgs:
+                    # automatically renew the lock on each message for 100 seconds
+                    renewer.register(self.receiver, msg, max_lock_renewal_duration=100)
+                data_logger.info("Register messages into AutoLockRenewer done.")
+
+                for msg in received_msgs:
+                    msg: azure.servicebus.ServiceBusMessage
+                    data_logger.info(f"Message {msg.message_id} received")
+
+                    stat = self.process_message(msg)
+                    if stat == -1:
+                        pass
+
+                        # todo: need to decide what to do with failed messages
+                        # it means that a file could not be parsed for some reason
+
+                for msg in received_msgs:
+                    self.complete_message(msg)
+
+                renewer.close()
 
     def process_message(self, queue_msg):
         try:
@@ -163,6 +197,7 @@ class PubSubHandler:
         except Exception as exc:
             data_logger.error(f"{axon_id} generated an exception: {exc}")
             data_logger.error(f"Traceback: {traceback.format_exc()}")
+            return -1
 
         else:
             data_logger.info(f"{axon_id} search completed successfully")
