@@ -55,6 +55,14 @@ class PubSubHandler:
         self._aggregators_receiver = value
 
     @property
+    def aggregators_sender(self):
+        return self._aggregators_sender
+
+    @aggregators_sender.setter
+    def aggregators_sender(self, value):
+        self._aggregators_sender = value
+
+    @property
     def connection_string(self):
         return self._connection_string
 
@@ -102,39 +110,54 @@ class PubSubHandler:
 
         self.aggregators_receiver = self.servicebus_client.get_queue_receiver(queue_name=self.receiver_queue_name)
 
+    def init_aggregators_sender(self):
+        self.servicebus_client: azure.servicebus.ServiceBusClient
+
+        self.aggregators_sender = self.servicebus_client.get_queue_sender(queue_name=self.receiver_queue_name)
+
     def poll_messages(self):
 
         self.init_servicebus()
 
         with self.servicebus_client:
             self.init_aggregators_receiver()
-            with self.init_aggregators_receiver:
+            with self.aggregators_receiver:
 
                 received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
                 data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
 
-                renewer = AutoLockRenewer()
+                if len(received_msgs) > 0:
+                    renewer = AutoLockRenewer()
 
-                for msg in received_msgs:
-                    # automatically renew the lock on each message for 100 seconds
-                    renewer.register(self.receiver, msg, max_lock_renewal_duration=100)
-                data_logger.info("Register messages into AutoLockRenewer done.")
+                    for msg in received_msgs:
+                        # automatically renew the lock on each message for 100 seconds
+                        renewer.register(self.aggregators_receiver, msg, max_lock_renewal_duration=100)
+                    data_logger.info("Register messages into AutoLockRenewer done.")
 
-                for msg in received_msgs:
-                    msg: azure.servicebus.ServiceBusMessage
-                    data_logger.info(f"Message {msg.message_id} received")
+                    for msg in received_msgs:
+                        msg: azure.servicebus.ServiceBusMessage
+                        data_logger.info(f"Aggregator message {msg.message_id} received")
 
-                    stat = self.process_message(msg)
-                    if stat == -1:
-                        pass
+                        response = self.process_message(msg)
+                        if response["status"] == -1:
+                            data_logger.info(f"Aggregator process {msg.message_id} failed")
 
-                        # todo: need to decide what to do with failed messages
-                        # it means that a file could not be parsed for some reason
+                            # todo: need to decide what to do with failed messages
+                            # it means that a file could not be parsed for some reason
+                        else:
+                            for msg in received_msgs:
+                                self.complete_results_messages(msg_list=response["handled_messages"],
+                                                               result_queue_name=response["result_queue_name"])
+                                data_logger.error(f"Message {msg.message_id} results marked as completed")
 
-                for msg in received_msgs:
-                    self.complete_message(msg)
+                                self.complete_aggregator_message(msg)
+                                data_logger.error(f"Message {msg.message_id} completed")
 
-                renewer.close()
+                                if response["requeue_message_content"] is not None:
+                                    self.requeue_agg_message(response["requeue_message_content"])
+                                    data_logger.error(f"Message {msg.message_id} re-queued")
+
+                    renewer.close()
 
     def process_message(self, queue_msg):
         try:
@@ -150,68 +173,88 @@ class PubSubHandler:
             axon_id = msg["axon_id"]
             save_to_path = msg["save_to_path"]
 
-            eg_queries_results = self.poll_queue_results(axon_id=axon_id,
-                                                         file_processes=file_processes,
-                                                         result_queue_name=result_queue_name)
+            eg_queries_results = self.process_current_results(axon_id=axon_id,
+                                                              file_processes=file_processes,
+                                                              result_queue_name=result_queue_name)
 
-            result_dict["eyeglass_queries"] = eg_queries_results
+            handled_messages = eg_queries_results["handled_messages"]
 
-            sql_handler.WriteDataPipeStatus(axon_id, "Eyeglass pipe completed",
-                                            perf_counter() - perf_start)
+            result_dict["eyeglass_queries"].extend(eg_queries_results["new_results"])
+            msg_to_requeue = {}
 
-            data_logger.info(f"EyeGlass queries completed. elapsed : {str(perf_counter() - perf_start)}")
+            if len(eg_queries_results["new_file_processes"]) > 0:
+                # if we did not receive all results from results queue
+                # we need to update the message and requeue
 
-            result_json = json.dumps(result_dict, indent=4)
+                result_dict["eyeglass_queries"].extend(eg_queries_results["new_results"])
+                msg_to_requeue["header"] = result_dict
+                msg_to_requeue["file_processes"] = eg_queries_results["new_file_processes"]
+                msg_to_requeue["axon_id"] = axon_id
+                msg_to_requeue["save_to_path"] = save_to_path
+                msg_to_requeue["result_queue_name"] = result_queue_name
 
-            adls_props = {"end_point": "ADLSAccountEndPoint",
-                          "container": "ADLSAccountContainerTest",
-                          "test_container": "ADLSAccountContainerTest"}
+            else:
+                # if all results collected, store the final document in the ADLS
+                sql_handler.WriteDataPipeStatus(axon_id, "Eyeglass pipe completed",
+                                                perf_counter() - perf_start)
 
-            adls_handler = ADLSHandler(self.l2_utils, adls_props)
+                data_logger.info(f"EyeGlass queries completed. elapsed : {str(perf_counter() - perf_start)}")
 
-            data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - perf_start)}")
-            sql_handler.WriteDataPipeStatus(axon_id, "ADLSHandler Initiated",
-                                            perf_counter() - perf_start)
+                result_json = json.dumps(result_dict, indent=4)
 
-            adls_handler.create_directory(save_to_path)
-            data_logger.info(f"ADLS directory created: {save_to_path}. elapsed : {str(perf_counter() - perf_start)}")
+                adls_props = {"end_point": "ADLSAccountEndPoint",
+                              "container": "ADLSAccountContainerTest",
+                              "test_container": "ADLSAccountContainerTest"}
 
-            adls_handler.create_file("{}.json".format(axon_id), result_json)
-            data_logger.info(
-                f"ADLS file created: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
-            sql_handler.WriteDataPipeStatus(
-                axon_id, "ADLS doc created",
-                perf_counter() - perf_start)
+                adls_handler = ADLSHandler(self.l2_utils, adls_props)
 
-            sql_handler.WriteDocToDB(axon_id, result_json)
-            data_logger.info(
-                f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+                data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - perf_start)}")
+                sql_handler.WriteDataPipeStatus(axon_id, "ADLSHandler Initiated",
+                                                perf_counter() - perf_start)
 
-            sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
-                                            perf_counter() - perf_start)
-            data_logger.info(
-                f"EyeGlass document saved to db. elapsed: {str(perf_counter() - perf_start)}")
+                adls_handler.create_directory(save_to_path)
+                data_logger.info(f"ADLS directory created: {save_to_path}. elapsed : {str(perf_counter() - perf_start)}")
 
-            adls_handler.delete_directory(axon_id)
+                adls_handler.create_file("{}.json".format(axon_id), result_json)
+                data_logger.info(
+                    f"ADLS file created: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+                sql_handler.WriteDataPipeStatus(
+                    axon_id, "ADLS doc created",
+                    perf_counter() - perf_start)
+
+                # sql_handler.WriteDocToDB(axon_id, result_json)
+                # data_logger.info(
+                #     f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+
+                sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
+                                                perf_counter() - perf_start)
+                # data_logger.info(
+                #     f"EyeGlass document saved to db. elapsed: {str(perf_counter() - perf_start)}")
+
+                adls_handler.delete_directory(axon_id)
+
+            data_logger.info(f"{axon_id} search completed successfully")
+            return {"status": 0,
+                    "handled_messages": handled_messages,
+                    "result_queue_name": result_queue_name,
+                    "requeue_message_content": msg_to_requeue if len(eg_queries_results["new_file_processes"]) > 0 else None
+                    }
 
         except Exception as exc:
             data_logger.error(f"{axon_id} generated an exception: {exc}")
             data_logger.error(f"Traceback: {traceback.format_exc()}")
-            return -1
+            return {"status": -1,
+                    "handled_messages": None,
+                    "result_queue_name": result_queue_name,
+                    "requeue_message_content": None
+                    }
 
-        else:
-            data_logger.info(f"{axon_id} search completed successfully")
+    def requeue_agg_message(self, msg):
 
-            return 0
-
-    def complete_message(self, msg):
-        self.aggregators_receiver.complete_message(msg)
-
-    def empty_queue(self):
-
-        received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
-        for msg in received_msgs:
-            self.aggregators_receiver.complete_message(msg)
+        self.init_aggregators_sender()
+        self.sender: azure.servicebus._servicebus_sender.ServiceBusSender
+        message = ServiceBusMessage(json.dumps(msg))
+        self.aggregators_sender.send_messages(message)  # (message)
 
     def send_a_message(self, msg):
 
@@ -245,3 +288,57 @@ class PubSubHandler:
 
         data_logger.info(f"EyeGlass results pulled from db. elapsed: {str(perf_counter() - perf_start)}")
         return all_results
+
+    def process_current_results(self, axon_id, file_processes, result_queue_name):
+
+        perf_start = perf_counter()
+        local_file_processes = file_processes
+        all_results = []
+
+        with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
+
+            received_results = results_receiver.receive_messages(max_message_count=5, max_wait_time=5)
+            data_logger.warning(f"Received {len(received_results)} result messages from the queue")
+
+            # renewer = AutoLockRenewer()
+            #
+            # for msg in received_results:
+            #     # automatically renew the lock on each message for 100 seconds
+            #     renewer.register(results_receiver, msg, max_lock_renewal_duration=100)
+            # data_logger.info("Register messages into AutoLockRenewer done.")
+
+            for msg in received_results:
+                msg: azure.servicebus.ServiceBusMessage
+                data_logger.info(f"Message {msg.message_id} received")
+                msg_content = json.loads(str(msg))
+
+                file_name = msg_content["file_name"]
+                all_results.extend(msg_content["query_results"])
+
+                del local_file_processes[file_name]
+
+                # self.complete_message(msg)
+                data_logger.info(f"Pending processes: {len(local_file_processes)}")
+
+            # for msg in received_results:
+            #     self.complete_message(msg)
+
+        data_logger.info(f"EyeGlass results pulled from db. elapsed: {str(perf_counter() - perf_start)}")
+        return {"new_results": all_results,
+                "new_file_processes": local_file_processes,
+                "handled_messages": received_results}
+
+    def complete_aggregator_message(self, msg):
+        self.aggregators_receiver.complete_message(msg)
+
+    def complete_results_messages(self, msg_list,result_queue_name):
+        with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
+            for msg in msg_list:
+                results_receiver.complete_message(msg)
+
+    def empty_queue(self):
+
+        received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
+        for msg in received_msgs:
+            self.aggregators_receiver.complete_message(msg)
+
