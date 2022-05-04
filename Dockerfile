@@ -10,7 +10,7 @@ RUN export PATH="$PATH:/opt/mssql-tools/bin"
 RUN apt install -y unixodbc-dev
 WORKDIR /usr/app/EyeGlassDataPipe.FileProcessor
 COPY ./requirements.txt ./
-RUN pip install -r requirements.txt
+RUN pip install --proxy proxy-dmz.intel.com:912 -r requirements.txt
 COPY ./src ./src
 COPY ./main.py ./
 RUN mkdir ./Logs

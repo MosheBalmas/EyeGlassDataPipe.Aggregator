@@ -4,7 +4,11 @@
     <list default="true" id="853c9820-2e37-4fa1-9e85-7230fc26d07f" name="Changes" comment="added dynamic result queue reader">
       <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+<<<<<<< HEAD
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+=======
       <change beforePath="$PROJECT_DIR$/src/utils/PubSubHandler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils/PubSubHandler.py" afterDir="false" />
+>>>>>>> 6bd7126bb8f993a90e679660e9c917fe300cb043
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,6 +27,16 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
+<<<<<<< HEAD
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "last_opened_file_path": "C:/Users/mbalmas/OneDrive - Intel Corporation/IVE/Dev/github/EyeGlassDataPipe",
+    "settings.editor.selected.configurable": "http.proxy"
+  }
+}]]></component>
+=======
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
@@ -34,6 +48,7 @@
       <recent name="C:\Users\mbalmas\Syncplicity\IVE\Data infra\Dev\Github\EyeGlassDataPipe.Aggregator" />
     </key>
   </component>
+>>>>>>> 6bd7126bb8f993a90e679660e9c917fe300cb043
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="EyeGlassDataPipe.Aggregator" />
