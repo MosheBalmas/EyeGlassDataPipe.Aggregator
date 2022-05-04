@@ -313,7 +313,13 @@ class PubSubHandler:
                 msg_content = json.loads(str(msg))
 
                 file_name = msg_content["file_name"]
-                all_results.extend(msg_content["query_results"])
+
+                current_result_set = {"query_status": msg_content["query_status"],
+                                      "query_message": msg_content["query_mgs"],
+                                      "query_results": msg_content["query_results"],
+                                      }
+
+                all_results.extend(current_result_set)
 
                 del local_file_processes[file_name]
 
