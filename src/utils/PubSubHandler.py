@@ -78,8 +78,16 @@ class PubSubHandler:
     def receiver_queue_name(self, value):
         self._receiver_queue_name = value
 
+    @property
+    def run_mode(self):
+        return self._run_mode
+
+    @run_mode.setter
+    def run_mode(self, value):
+        self._run_mode = value
+
     # ---------------------------------------------------------------------
-    def __init__(self, l2_utils, sql_handler, data_logger_p=logging.getLogger(__name__)):
+    def __init__(self, l2_utils, sql_handler, run_mode="Prod", data_logger_p=logging.getLogger(__name__)):
         # Initialize values
 
         global data_logger
@@ -89,7 +97,7 @@ class PubSubHandler:
 
         self.l2_utils = l2_utils
         self.sql_handler = sql_handler
-
+        self.run_mode = run_mode
         self.connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
         self.receiver_queue_name = l2_utils.get_kv_secret("EGAggregationQueueName").value
 
@@ -148,14 +156,14 @@ class PubSubHandler:
                             for msg in received_msgs:
                                 self.complete_results_messages(msg_list=response["handled_messages"],
                                                                result_queue_name=response["result_queue_name"])
-                                data_logger.error(f"Message {msg.message_id} results marked as completed")
+                                data_logger.info(f"Message {msg.message_id} results marked as completed")
 
                                 self.complete_aggregator_message(msg)
-                                data_logger.error(f"Message {msg.message_id} completed")
+                                data_logger.info(f"Message {msg.message_id} completed")
 
                                 if response["requeue_message_content"] is not None:
                                     self.requeue_agg_message(response["requeue_message_content"])
-                                    data_logger.error(f"Message {msg.message_id} re-queued")
+                                    data_logger.info(f"Message {msg.message_id} re-queued")
 
                     renewer.close()
 
@@ -165,13 +173,14 @@ class PubSubHandler:
             sql_handler = AzureSqlHandler(self.l2_utils)
 
             msg = json.loads(str(queue_msg))
-            data_logger.error(f"{msg['axon_id']} is being processed")
+            data_logger.info(f"{msg['axon_id']} is being processed")
 
             result_dict = msg["header"]
             file_processes = msg["file_processes"]
             result_queue_name = msg["result_queue_name"]
             axon_id = msg["axon_id"]
             save_to_path = msg["save_to_path"]
+            run_mode = msg["run_mode"]
 
             eg_queries_results = self.process_current_results(axon_id=axon_id,
                                                               file_processes=file_processes,
@@ -190,6 +199,7 @@ class PubSubHandler:
                 msg_to_requeue["header"] = result_dict
                 msg_to_requeue["file_processes"] = eg_queries_results["new_file_processes"]
                 msg_to_requeue["axon_id"] = axon_id
+                msg_to_requeue["run_mode"] = run_mode
                 msg_to_requeue["save_to_path"] = save_to_path
                 msg_to_requeue["result_queue_name"] = result_queue_name
 
@@ -206,7 +216,7 @@ class PubSubHandler:
                               "container": "ADLSAccountContainerTest",
                               "test_container": "ADLSAccountContainerTest"}
 
-                adls_handler = ADLSHandler(self.l2_utils, adls_props)
+                adls_handler = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode,  adls_props=adls_props)
 
                 data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - perf_start)}")
                 sql_handler.WriteDataPipeStatus(axon_id, "ADLSHandler Initiated",
@@ -231,7 +241,13 @@ class PubSubHandler:
                 # data_logger.info(
                 #     f"EyeGlass document saved to db. elapsed: {str(perf_counter() - perf_start)}")
 
-                adls_handler.delete_directory(axon_id)
+                adls_process_files_props = {"end_point": "FileProcessStorageAccountEndPoint",
+                                            "container": "FileProcessStorageContainer",
+                                            "test_container": "FileProcessStorageContainerTest"}
+
+                adls_process_files = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode, adls_props=adls_process_files_props)
+
+                adls_process_files.delete_directory(axon_id)
 
             data_logger.info(f"{axon_id} search completed successfully")
             return {"status": 0,
@@ -271,7 +287,7 @@ class PubSubHandler:
             time.sleep(1)
             with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
 
-                received_results = results_receiver.receive_messages(max_message_count=5, max_wait_time=5)
+                received_results = results_receiver.receive_messages(max_message_count=10, max_wait_time=5)
                 data_logger.warning(f"Received {len(received_results)} messages from the queue")
                 for msg in received_results:
                     msg: azure.servicebus.ServiceBusMessage

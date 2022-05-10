@@ -84,7 +84,7 @@ class ADLSHandler:
         self._fs_paths = value
 
     # --------------------------------------------------------------------------------
-    def __init__(self, l2_utils, mode="Prod", adls_props=None):
+    def __init__(self, l2_utils, run_mode="Prod", adls_props=None):
 
         if adls_props is None:
             adls_props = {"end_point": "ADLSAccountEndPoint",
@@ -96,8 +96,11 @@ class ADLSHandler:
             data_logger.info("Utils handler created")
             self.ADLS_account_end_point = l2_utils.get_kv_secret(adls_props["end_point"]).value
             self.ADLS_account_container = l2_utils.get_kv_secret(
-                adls_props["test_container"]).value if mode == "test" else l2_utils.get_kv_secret(
+                adls_props["test_container"]).value if run_mode == "test" else l2_utils.get_kv_secret(
                 adls_props["container"]).value
+
+            data_logger.info(f"run mode is {run_mode}. container is {self.ADLS_account_container}")
+
 
             data_logger.info("ADLS Connection data fetched from KV")
 
@@ -114,7 +117,7 @@ class ADLSHandler:
 
         try:
             self.service_client = DataLakeServiceClient.from_connection_string(self.ADLS_account_end_point)
-            data_logger.info(f"DataLakeServiceClient created")
+            data_logger.info(f"DataLakeServiceClient created. ")
         except Exception as e:
             data_logger.error(f"Initialize_storage_account: Exception of type %s occurred. Error: {str(e)}. Traceback:. {traceback.format_exc()}")
 
@@ -166,6 +169,7 @@ class ADLSHandler:
     def delete_directory(self, axon_id):
         try:
 
+            data_logger.info(f"Delete: {axon_id}")
             self.file_system_client.delete_directory(axon_id)
 
         except Exception as e:

@@ -2,6 +2,7 @@ import time
 import logging
 import logging.config
 import sys
+import os
 
 
 class L2Logger:
@@ -54,6 +55,7 @@ class L2Logger:
         self.LOG.info(f"Logger is {self.log_file_name}.log")
 
     def init_logging(self):
+        print (os.getcwd())
         DEFAULT_LOGGING = {
             "version": 1,
             "formatters": {

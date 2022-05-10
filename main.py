@@ -22,9 +22,10 @@ def main():
         # Initialize logging
         data_logger = L2Logger("EG.Aggregator", level="INFO").LOG
 
+        run_mode = "Test"
         l2_utils = L2_Utils()
         sql_handler = AzureSqlHandler(l2_utils)
-        sub = PubSubHandler(l2_utils, sql_handler, data_logger_p=data_logger)
+        sub = PubSubHandler(l2_utils, sql_handler, run_mode=run_mode,  data_logger_p=data_logger)
 
         while True:
             sub.poll_messages()
