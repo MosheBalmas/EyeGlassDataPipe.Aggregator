@@ -31,8 +31,8 @@ def poll(data_logger):
 
         except Exception as e:
 
-            data_logger.error("Exception of type %s occurred. Error: %s" % (e.__class__, str(e)))
-            data_logger.error("Traceback: {}".format(traceback.format_exc()))
+            data_logger.error(f"Exception of type {e.__class__} occurred. Error: {str(e)} \n"
+                              f"Traceback: {traceback.format_exc()}")
             sys.exit(f"Exception of type {e.__class__} occurred. Error: {str(e)} \n"
                      f"Traceback: {traceback.format_exc()}")
 
