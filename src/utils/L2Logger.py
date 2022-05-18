@@ -52,7 +52,7 @@ class L2Logger:
         self.write_mode = write_mode or "w"
         self.level = level = level or "INFO"
         self.init_logging()
-        self.LOG.info(f"Logger is {self.log_file_name}.log")
+        self.LOG.info(f"Logger is {self.log_file_name}")
 
     def init_logging(self):
         print (os.getcwd())
@@ -60,7 +60,7 @@ class L2Logger:
             "version": 1,
             "formatters": {
                 "standard": {
-                    "format": "%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
+                    "format": "%(asctime)s - %(name)s - %(threadName)s - %(levelname)s - %(module)s:  %(message)s",
                     "datefmt": "%d/%m/%Y %I:%M:%S %p"},
             },
             "handlers": {

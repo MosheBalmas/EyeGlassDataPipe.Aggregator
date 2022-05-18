@@ -10,6 +10,7 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage, AutoLockRenewe
 
 from src.utils.AzureSqlHandler import AzureSqlHandler
 from src.utils.ADLSHandler import ADLSHandler
+from src.utils.AzureCosmosDbHandler import AzureCosmosDbHandler
 
 # os.environ["HTTP_PROXY"] = "http://proxy-dmz.intel.com:912"
 # os.environ["HTTPS_PROXY"] = "http://proxy-dmz.intel.com:912"
@@ -123,7 +124,7 @@ class PubSubHandler:
 
         self.aggregators_sender = self.servicebus_client.get_queue_sender(queue_name=self.receiver_queue_name)
 
-    def poll_messages(self):
+    def poll_queue_messages(self):
 
         self.init_servicebus()
 
@@ -132,7 +133,7 @@ class PubSubHandler:
             with self.aggregators_receiver:
 
                 received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
-                data_logger.warning(f"Received {len(received_msgs)} messages from the queue")
+                data_logger.info(f"Received {len(received_msgs)} messages from the queue")
 
                 if len(received_msgs) > 0:
                     renewer = AutoLockRenewer()
@@ -146,7 +147,7 @@ class PubSubHandler:
                         msg: azure.servicebus.ServiceBusMessage
                         data_logger.info(f"Aggregator message {msg.message_id} received")
 
-                        response = self.process_message(msg)
+                        response = self.process_message_with_results_queue(msg)
                         if response["status"] == -1:
                             data_logger.info(f"Aggregator process {msg.message_id} failed")
 
@@ -167,7 +168,48 @@ class PubSubHandler:
 
                     renewer.close()
 
-    def process_message(self, queue_msg):
+    def poll_db_messages(self):
+
+        self.init_servicebus()
+
+        with self.servicebus_client:
+            self.init_aggregators_receiver()
+            with self.aggregators_receiver:
+
+                received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                data_logger.info(f"Received {len(received_msgs)} messages from the queue")
+
+                if len(received_msgs) > 0:
+                    renewer = AutoLockRenewer()
+
+                    for msg in received_msgs:
+                        # automatically renew the lock on each message for 100 seconds
+                        renewer.register(self.aggregators_receiver, msg, max_lock_renewal_duration=100)
+                    data_logger.info("Register messages into AutoLockRenewer done.")
+
+                    for msg in received_msgs:
+                        msg: azure.servicebus.ServiceBusMessage
+                        data_logger.info(f"Aggregator message {msg.message_id} received")
+
+                        response = self.process_message_with_results_db(msg)
+                        if response["status"] == -1:
+                            data_logger.info(f"Aggregator process {msg.message_id} failed")
+
+                            # todo: need to decide what to do with failed messages
+                            # it means that a file could not be parsed for some reason
+                        else:
+                            for msg in received_msgs:
+
+                                self.complete_aggregator_message(msg)
+                                data_logger.info(f"Message {msg.message_id} completed")
+
+                                if response["requeue_message_content"] is not None:
+                                    self.requeue_agg_message(response["requeue_message_content"])
+                                    data_logger.info(f"Message {msg.message_id} re-queued")
+
+                    renewer.close()
+
+    def process_message_with_results_queue(self, queue_msg):
         try:
             perf_start = perf_counter()
             sql_handler = AzureSqlHandler(self.l2_utils)
@@ -216,14 +258,15 @@ class PubSubHandler:
                               "container": "ADLSAccountContainerTest",
                               "test_container": "ADLSAccountContainerTest"}
 
-                adls_handler = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode,  adls_props=adls_props)
+                adls_handler = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode, adls_props=adls_props)
 
                 data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - perf_start)}")
                 sql_handler.WriteDataPipeStatus(axon_id, "ADLSHandler Initiated",
                                                 perf_counter() - perf_start)
 
                 adls_handler.create_directory(save_to_path)
-                data_logger.info(f"ADLS directory created: {save_to_path}. elapsed : {str(perf_counter() - perf_start)}")
+                data_logger.info(
+                    f"ADLS directory created: {save_to_path}. elapsed : {str(perf_counter() - perf_start)}")
 
                 adls_handler.create_file("{}.json".format(axon_id), result_json)
                 data_logger.info(
@@ -245,7 +288,8 @@ class PubSubHandler:
                                             "container": "FileProcessStorageContainer",
                                             "test_container": "FileProcessStorageContainerTest"}
 
-                adls_process_files = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode, adls_props=adls_process_files_props)
+                adls_process_files = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode,
+                                                 adls_props=adls_process_files_props)
 
                 adls_process_files.delete_directory(axon_id)
 
@@ -253,7 +297,8 @@ class PubSubHandler:
             return {"status": 0,
                     "handled_messages": handled_messages,
                     "result_queue_name": result_queue_name,
-                    "requeue_message_content": msg_to_requeue if len(eg_queries_results["new_file_processes"]) > 0 else None
+                    "requeue_message_content": msg_to_requeue if len(
+                        eg_queries_results["new_file_processes"]) > 0 else None
                     }
 
         except Exception as exc:
@@ -262,6 +307,104 @@ class PubSubHandler:
             return {"status": -1,
                     "handled_messages": None,
                     "result_queue_name": result_queue_name,
+                    "requeue_message_content": None
+                    }
+
+    def process_message_with_results_db(self, queue_msg):
+        try:
+            perf_start = perf_counter()
+            sql_handler = AzureSqlHandler(self.l2_utils)
+
+            msg = json.loads(str(queue_msg))
+            data_logger.info(f"{msg['axon_id']} is being processed")
+
+            result_dict = msg["header"]
+            file_processes = msg["file_processes"]
+            axon_id = msg["axon_id"]
+            save_to_path = msg["save_to_path"]
+            run_mode = msg["run_mode"]
+
+            cosmos_handler = AzureCosmosDbHandler(l2_utils=self.l2_utils, data_logger_p=data_logger)
+
+            created_items = cosmos_handler.count_items_created(list(file_processes.values()))
+
+            if created_items < len(file_processes):  # some results are missing
+                # if we did not receive all results from results queue
+                # we need to update the message and requeue
+                data_logger.info(f"{created_items} results received till now. expecting {len(file_processes)}. Agg msg will be re-queued")
+
+                msg_to_requeue = {"header": result_dict,
+                                  "file_processes": file_processes,
+                                  "axon_id": axon_id,
+                                  "run_mode": run_mode,
+                                  "created_items": created_items,
+                                  "save_to_path": save_to_path}
+
+            else:  # all messages received
+
+                # if all results collected, store the final document in the ADLS
+
+                all_results = cosmos_handler.get_all_items(list(file_processes.values()))
+
+                result_dict["eyeglass_queries"].extend(all_results)
+
+                # sql_handler.WriteDataPipeStatus(axon_id, "Eyeglass pipe completed",
+                #                                 perf_counter() - perf_start)
+
+                data_logger.info(f"EyeGlass queries completed. elapsed : {str(perf_counter() - perf_start)}")
+
+                result_json = json.dumps(result_dict, indent=4)
+
+                adls_props = {"end_point": "ADLSAccountEndPoint",
+                              "container": "ADLSAccountContainerTest",
+                              "test_container": "ADLSAccountContainerTest"}
+
+                adls_handler = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode, adls_props=adls_props)
+
+                data_logger.info(f"adls_handler ready. elapsed : {str(perf_counter() - perf_start)}")
+                # sql_handler.WriteDataPipeStatus(axon_id, "ADLSHandler Initiated",
+                #                                 perf_counter() - perf_start)
+
+                adls_handler.create_directory(save_to_path)
+                data_logger.info(
+                    f"ADLS directory created: {save_to_path}. elapsed : {str(perf_counter() - perf_start)}")
+
+                adls_handler.create_file("{}.json".format(axon_id), result_json)
+                data_logger.info(
+                    f"ADLS file created: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+                # sql_handler.WriteDataPipeStatus(
+                #     axon_id, "ADLS doc created",
+                #     perf_counter() - perf_start)
+
+                # sql_handler.WriteDocToDB(axon_id, result_json)
+                # data_logger.info(
+                #     f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+
+                # sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
+                #                                 perf_counter() - perf_start)
+                # data_logger.info(
+                #     f"EyeGlass document saved to db. elapsed: {str(perf_counter() - perf_start)}")
+
+                adls_process_files_props = {"end_point": "FileProcessStorageAccountEndPoint",
+                                            "container": "FileProcessStorageContainer",
+                                            "test_container": "FileProcessStorageContainerTest"}
+
+                adls_process_files = ADLSHandler(l2_utils=self.l2_utils, run_mode=self.run_mode,
+                                                 adls_props=adls_process_files_props)
+
+                adls_process_files.delete_directory(axon_id)
+
+            data_logger.info(f"{axon_id} search completed successfully")
+            return {"status": 0,
+                    "handled_messages": created_items,
+                    "requeue_message_content": msg_to_requeue if created_items < len(file_processes) else None
+                    }
+
+        except Exception as exc:
+            data_logger.error(f"{axon_id} generated an exception: {exc}")
+            data_logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"status": -1,
+                    "handled_messages": None,
                     "requeue_message_content": None
                     }
 
@@ -288,7 +431,7 @@ class PubSubHandler:
             with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
 
                 received_results = results_receiver.receive_messages(max_message_count=10, max_wait_time=5)
-                data_logger.warning(f"Received {len(received_results)} messages from the queue")
+                data_logger.info(f"Received {len(received_results)} messages from the queue")
                 for msg in received_results:
                     msg: azure.servicebus.ServiceBusMessage
                     data_logger.info(f"Message {msg.message_id} received")
@@ -312,9 +455,8 @@ class PubSubHandler:
         all_results = []
 
         with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
-
             received_results = results_receiver.receive_messages(max_message_count=5, max_wait_time=5)
-            data_logger.warning(f"Received {len(received_results)} result messages from the queue")
+            data_logger.info(f"Received {len(received_results)} result messages from the queue")
 
             # renewer = AutoLockRenewer()
             #
@@ -335,7 +477,7 @@ class PubSubHandler:
                                       "query_results": msg_content["query_results"],
                                       }
 
-                all_results.extend(current_result_set)
+                all_results.append(current_result_set)
 
                 del local_file_processes[file_name]
 
@@ -353,7 +495,7 @@ class PubSubHandler:
     def complete_aggregator_message(self, msg):
         self.aggregators_receiver.complete_message(msg)
 
-    def complete_results_messages(self, msg_list,result_queue_name):
+    def complete_results_messages(self, msg_list, result_queue_name):
         with self.servicebus_client.get_queue_receiver(queue_name=result_queue_name) as results_receiver:
             for msg in msg_list:
                 results_receiver.complete_message(msg)
@@ -363,4 +505,3 @@ class PubSubHandler:
         received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1000, max_wait_time=500000)
         for msg in received_msgs:
             self.aggregators_receiver.complete_message(msg)
-
