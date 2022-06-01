@@ -17,11 +17,12 @@ def filter_environment_credential_warning(record):
     return True
 
 
-def poll(data_logger):
+def poll():
 
     while True:
         try:
             # Initialize logging
+            data_logger = L2Logger("EG.Aggregator", level="INFO").LOG
 
             run_mode = "Prod"
             l2_utils = L2_Utils()
@@ -45,8 +46,7 @@ def poll(data_logger):
 
 def main():
 
-    data_logger = L2Logger("EG.Aggregator", level="INFO").LOG
-    poll(data_logger)
+    poll()
 
 
 if __name__ == '__main__':

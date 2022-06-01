@@ -154,52 +154,51 @@ class PubSubHandler:
                             # todo: need to decide what to do with failed messages
                             # it means that a file could not be parsed for some reason
                         else:
-                            for msg in received_msgs:
-                                self.complete_results_messages(msg_list=response["handled_messages"],
-                                                               result_queue_name=response["result_queue_name"])
-                                data_logger.info(f"Message {msg.message_id} results marked as completed")
+                            self.complete_results_messages(msg_list=response["handled_messages"],
+                                                           result_queue_name=response["result_queue_name"])
+                            data_logger.info(f"Message {msg.message_id} results marked as completed")
 
-                                self.complete_aggregator_message(msg)
-                                data_logger.info(f"Message {msg.message_id} completed")
+                            self.complete_aggregator_message(msg)
+                            data_logger.info(f"Message {msg.message_id} completed")
 
-                                if response["requeue_message_content"] is not None:
-                                    self.requeue_agg_message(response["requeue_message_content"])
-                                    data_logger.info(f"Message {msg.message_id} re-queued")
+                            if response["requeue_message_content"] is not None:
+                                self.requeue_agg_message(response["requeue_message_content"])
+                                data_logger.info(f"Message {msg.message_id} re-queued")
 
                     renewer.close()
 
     def poll_db_messages(self):
 
-        self.init_servicebus()
+        try:
 
-        with self.servicebus_client:
-            self.init_aggregators_receiver()
-            with self.aggregators_receiver:
+            self.init_servicebus()
 
-                received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
-                data_logger.info(f"Received {len(received_msgs)} messages from the queue")
+            with self.servicebus_client:
+                self.init_aggregators_receiver()
+                with self.aggregators_receiver:
 
-                if len(received_msgs) > 0:
-                    renewer = AutoLockRenewer()
+                    received_msgs = self.aggregators_receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                    data_logger.info(f"Received {len(received_msgs)} messages from the queue")
 
-                    for msg in received_msgs:
-                        # automatically renew the lock on each message for 100 seconds
-                        renewer.register(self.aggregators_receiver, msg, max_lock_renewal_duration=100)
-                    data_logger.info("Register messages into AutoLockRenewer done.")
+                    if len(received_msgs) > 0:
+                        renewer = AutoLockRenewer()
 
-                    for msg in received_msgs:
-                        msg: azure.servicebus.ServiceBusMessage
-                        data_logger.info(f"Aggregator message {msg.message_id} received")
+                        for msg in received_msgs:
+                            # automatically renew the lock on each message for 100 seconds
+                            renewer.register(self.aggregators_receiver, msg, max_lock_renewal_duration=100)
+                            data_logger.info(f"{msg.message_id}: Register messages into AutoLockRenewer done.")
 
-                        response = self.process_message_with_results_db(msg)
-                        if response["status"] == -1:
-                            data_logger.info(f"Aggregator process {msg.message_id} failed")
+                        for msg in received_msgs:
+                            msg: azure.servicebus.ServiceBusMessage
+                            data_logger.info(f"Aggregator message {msg.message_id} received")
 
-                            # todo: need to decide what to do with failed messages
-                            # it means that a file could not be parsed for some reason
-                        else:
-                            for msg in received_msgs:
+                            response = self.process_message_with_results_db(msg)
+                            if response["status"] == -1:
+                                data_logger.info(f"Aggregator process {msg.message_id} failed")
 
+                                # todo: need to decide what to do with failed messages
+                                # it means that a file could not be parsed for some reason
+                            else:
                                 self.complete_aggregator_message(msg)
                                 data_logger.info(f"Message {msg.message_id} completed")
 
@@ -207,7 +206,11 @@ class PubSubHandler:
                                     self.requeue_agg_message(response["requeue_message_content"])
                                     data_logger.info(f"Message {msg.message_id} re-queued")
 
-                    renewer.close()
+                        renewer.close()
+
+        except Exception as e:
+            data_logger.error(f"Poll DB message cycle failed. Exception of type {e.__class__} occurred. Error: {str(e)} \n"
+                              f"Traceback: {traceback.format_exc()}")
 
     def process_message_with_results_queue(self, queue_msg):
         try:
