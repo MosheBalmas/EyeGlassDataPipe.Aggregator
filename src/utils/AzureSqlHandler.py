@@ -111,12 +111,12 @@ class AzureSqlHandler:
             cursor = conn.cursor()
 
             sql = """\
-            EXEC Data_Utils.SaveJsonDoc @doc_id=?, @doc_body=?
+            EXEC Data_Utils.ParseJsonDoc_V3 @Doc_Entity_Id=?, @doc_body=?
             """
             params = (doc_id, doc_body)
             cursor.execute(sql, params)
 
-        data_logger.info("Completed writing doc to DB!")
+        # data_logger.info("Completed writing doc to DB!")
 
     def GetPendingResultsList(self, doc_id):
         with pyodbc.connect(self.connection_string) as conn:

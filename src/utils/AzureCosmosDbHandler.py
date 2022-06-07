@@ -117,7 +117,7 @@ class AzureCosmosDbHandler:
             response = self.container.read_item(item=doc["id"], partition_key=doc["id"])
             self.container.replace_item(item=response, body=doc)
 
-    def count_items_created(self, result_items):
+    def count_items_created(self, uuid_list):
         items = []
         with cosmos_client.CosmosClient(self.CosmosDbHost, {'masterKey': self.CosmosDbMasterKey}) as cosmos_cl:
             try:
@@ -129,7 +129,7 @@ class AzureCosmosDbHandler:
                 container = db.get_container_client(self.CosmosDbContainerId)
 
                 items = list(container.query_items(
-                    query=f"SELECT c.p_uuid  FROM c WHERE c.p_uuid in ({json.dumps(result_items)[1:-1]})",
+                    query=f"SELECT c.p_uuid  FROM c WHERE c.p_uuid in ({json.dumps(uuid_list)[1:-1]})",  #json.dumps(result_items)[1:-1]})",
                     enable_cross_partition_query=True
 
                 ))
@@ -138,7 +138,7 @@ class AzureCosmosDbHandler:
         # print(items)
         return len(items)
 
-    def get_all_items(self, result_items):
+    def get_all_items(self, uuid_list):
         items = []
         with cosmos_client.CosmosClient(self.CosmosDbHost, {'masterKey': self.CosmosDbMasterKey}) as cosmos_cl:
             try:
@@ -150,7 +150,8 @@ class AzureCosmosDbHandler:
                 container = db.get_container_client(self.CosmosDbContainerId)
 
                 items = list(container.query_items(
-                    query=f"SELECT c.p_uuid, c.query_status, c.query_message, c.query_results  FROM c WHERE c.p_uuid in ({json.dumps(result_items)[1:-1]})",
+                    query=f"SELECT c.p_uuid, c.duration, c.file_name, c.matched_file_size, c.query_status, "
+                          f"c.query_msg, c.query_results  FROM c WHERE c.p_uuid in ({json.dumps(uuid_list)[1:-1]})",
                     enable_cross_partition_query=True
 
                 ))

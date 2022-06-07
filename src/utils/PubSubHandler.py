@@ -278,12 +278,12 @@ class PubSubHandler:
                     axon_id, "ADLS doc created",
                     perf_counter() - perf_start)
 
-                # sql_handler.WriteDocToDB(axon_id, result_json)
-                # data_logger.info(
-                #     f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+                sql_handler.WriteDocToDB(axon_id, result_json)
+                data_logger.info(
+                    f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
 
-                sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
-                                                perf_counter() - perf_start)
+                # sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
+                #                                perf_counter() - perf_start)
                 # data_logger.info(
                 #     f"EyeGlass document saved to db. elapsed: {str(perf_counter() - perf_start)}")
 
@@ -329,12 +329,16 @@ class PubSubHandler:
 
             cosmos_handler = AzureCosmosDbHandler(l2_utils=self.l2_utils, data_logger_p=data_logger)
 
-            created_items = cosmos_handler.count_items_created(list(file_processes.values()))
+            uuid_list = [p["p_uuid"] for p in file_processes]
+            created_items = cosmos_handler.count_items_created(uuid_list)
+
+            data_logger.info(
+                f"expected results: {len(file_processes)}. Found: {created_items} ")
 
             if created_items < len(file_processes):  # some results are missing
                 # if we did not receive all results from results queue
                 # we need to update the message and requeue
-                data_logger.info(f"{created_items} results received till now. expecting {len(file_processes)}. Agg msg will be re-queued")
+                data_logger.info(f"Few results are still missing. Agg msg will be re-queued")
 
                 msg_to_requeue = {"header": result_dict,
                                   "file_processes": file_processes,
@@ -347,7 +351,7 @@ class PubSubHandler:
 
                 # if all results collected, store the final document in the ADLS
 
-                all_results = cosmos_handler.get_all_items(list(file_processes.values()))
+                all_results = cosmos_handler.get_all_items(uuid_list)
 
                 result_dict["eyeglass_queries"].extend(all_results)
 
@@ -379,9 +383,9 @@ class PubSubHandler:
                 #     axon_id, "ADLS doc created",
                 #     perf_counter() - perf_start)
 
-                # sql_handler.WriteDocToDB(axon_id, result_json)
-                # data_logger.info(
-                #     f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
+                sql_handler.WriteDocToDB(axon_id, result_json)
+                data_logger.info(
+                     f"DB file parsed: {axon_id}. elapsed: {str(perf_counter() - perf_start)}")
 
                 # sql_handler.WriteDataPipeStatus(axon_id, "Process completed",
                 #                                 perf_counter() - perf_start)
