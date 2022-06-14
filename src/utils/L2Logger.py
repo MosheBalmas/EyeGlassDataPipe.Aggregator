@@ -2,7 +2,6 @@ import time
 import logging
 import logging.config
 import sys
-import os
 
 
 class L2Logger:
@@ -47,15 +46,14 @@ class L2Logger:
     def level(self, value):
         self._level = value
 
-    def __init__(self, proc, write_mode="w", level="INFO"):
-        self.log_file_name = "%s_%s.log" % (proc, time.strftime("%Y%m%d-%H%M%S"))
+    def __init__(self, proc, write_mode="a", level="INFO"):
+        self.log_file_name = "%s_%s.log" % (proc, time.strftime("%Y%m%d-%H"))
         self.write_mode = write_mode or "w"
         self.level = level = level or "INFO"
         self.init_logging()
         self.LOG.info(f"Logger is {self.log_file_name}")
 
     def init_logging(self):
-        print (os.getcwd())
         DEFAULT_LOGGING = {
             "version": 1,
             "formatters": {
@@ -66,16 +64,16 @@ class L2Logger:
             "handlers": {
                 "console": {"class": "logging.StreamHandler",
                             "formatter": "standard",
-                            "level": "DEBUG",
+                            "level": "INFO",
                             "stream": sys.stdout},
                 "file": {"class": "logging.FileHandler",
                          "formatter": "standard",
-                         "level": "DEBUG",
+                         "level": "INFO",
                          "filename": f"Logs/{self.log_file_name}", "mode": self.write_mode}
             },
             "loggers": {
                 __name__: {"level": "INFO",
-                           "handlers": ["console"],
+                           "handlers": ["console", "file"],
                            "propagate": False},
             }
         }
