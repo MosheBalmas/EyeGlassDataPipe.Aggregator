@@ -116,6 +116,7 @@ class AzureSqlHandler:
             params = (doc_id, doc_body)
             cursor.execute(sql, params)
 
+
         # data_logger.info("Completed writing doc to DB!")
 
     def GetPendingResultsList(self, doc_id):
