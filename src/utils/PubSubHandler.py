@@ -100,7 +100,7 @@ class PubSubHandler:
         self.sql_handler = sql_handler
         self.run_mode = run_mode
         self.connection_string = l2_utils.get_kv_secret("EGProcessQueueEndPoint").value
-        self.receiver_queue_name = l2_utils.get_kv_secret("EGAggregationQueueName").value
+        self.receiver_queue_name = l2_utils.get_kv_secret("EGAggregationsQueueName").value
 
         # self.init_servicebus(connection_string)
 
